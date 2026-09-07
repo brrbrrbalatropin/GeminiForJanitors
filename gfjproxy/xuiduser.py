@@ -225,7 +225,7 @@ class RedisUserStorage(UserStorage):
     EXPIRY_TIME_IN_SECONDS = 30 * 24 * 60 * 60  # Arbitrary
 
     def __init__(self, url: str = DEFAULT_URL, timeout: float = 30):
-        self._locks: dict[str, redis.lock.Lock] = dict()
+        self._locks: dict[str, redis.lock.Lock] = {}
         self._client = redis.from_url(
             url, socket_timeout=timeout, socket_connect_timeout=timeout
         )
@@ -333,6 +333,14 @@ class UserSettings:
     #########################
 
     @property
+    def use_fixturns(self) -> bool:
+        return bool(self._data.get("use_fixturns", False))
+
+    @use_fixturns.setter
+    def use_fixturns(self, value):
+        self._data["use_fixturns"] = bool(value)
+
+    @property
     def use_btrick(self) -> bool:
         return bool(self._data.get("use_btrick", False))
 
@@ -347,6 +355,14 @@ class UserSettings:
     @use_dice_char.setter
     def use_dice_char(self, value):
         self._data["use_dice_char"] = bool(value)
+
+    @property
+    def use_noass(self) -> bool:
+        return bool(self._data.get("use_noass", False))
+
+    @use_noass.setter
+    def use_noass(self, value):
+        self._data["use_noass"] = bool(value)
 
     @property
     def use_nobot(self) -> bool:

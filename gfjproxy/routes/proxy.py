@@ -55,11 +55,14 @@ def handle():
 
     # Cheap and easy rate limiting
 
-    if (seconds := user.last_seen()) and (cooldown := get_cooldown()):
-        if (delay := cooldown - seconds) > 0:
-            xlog(user, f"User told to wait {delay} seconds")
-            storage.unlock(xuid)
-            return response.build_error(f"Please wait {delay} seconds.", 429)
+    if (
+        (seconds := user.last_seen())
+        and (cooldown := get_cooldown())
+        and (delay := cooldown - seconds) > 0
+    ):
+        xlog(user, f"User told to wait {delay} seconds")
+        storage.unlock(xuid)
+        return response.build_error(f"Please wait {delay} seconds.", 429)
 
     # Handle user's request
 
@@ -92,7 +95,7 @@ def handle():
                 (
                     f"Unknown model(s): {unknown}\n"
                     + "Make sure to use OpenRouter syntax `provider/model`.\n"
-                    + "Examples: `google/gemini-2.5-flash`, `cerebras/llama3.1-8b`, etc."
+                    + "Examples: `google/gemini-2.5-flash`, `cerebras/llama3.1-8b`, `deepseek/deepseek-chat`, etc."
                 ),
                 400,
             )
@@ -100,7 +103,7 @@ def handle():
             response = handle_proxy_test(user, jai_req, response)
         else:
             response = handle_chat_message(user, jai_req, response)
-    except Exception as e:
+    except Exception as e:  # ruff: ignore[BLE001]
         response.add_error("Internal Proxy Error", 500)
         print_exception(e)
 

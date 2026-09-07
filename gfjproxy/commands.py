@@ -18,15 +18,18 @@ def _stripmultispace(string, *, regex=re.compile(r" +")):
     return regex.sub(" ", string)
 
 
+PROXY_TAG_REGEX = re.compile(
+    re.escape(ResponseHelper.PROXY_TAG_OPEN)
+    + r".*?"
+    + re.escape(ResponseHelper.PROXY_TAG_CLOSE),
+    re.DOTALL,
+)
+
+
 def _stripproxytext(
     string,
     *,
-    regex=re.compile(
-        re.escape(ResponseHelper.PROXY_TAG_OPEN)
-        + r".*?"
-        + re.escape(ResponseHelper.PROXY_TAG_CLOSE),
-        re.S,
-    ),
+    regex=PROXY_TAG_REGEX,
 ):
     """Remove <proxy></proxy> tags and their content."""
 
@@ -65,13 +68,9 @@ class Command:
 class CommandError(Exception):
     """User error raised by commands."""
 
-    pass
-
 
 class CommandExit(Exception):
     """Exception to exit processing early raised by commands."""
-
-    pass
 
 
 COMMANDS = {}
@@ -130,7 +129,9 @@ def aboutme(args, user, jai_req, response):
         f"You have used this proxy {user.get_rcounter()} time(s).",
         f"You were {user.last_seen_msg()}.",
         "Your commands are:",
+        f"\u200b- //fixturns {'on' if user.use_fixturns else 'off'}",
         f"\u200b- //btrick {'on' if user.use_btrick else 'off'}",
+        f"\u200b- //noass {'on' if user.use_noass else 'off'}",
         f"\u200b- //dice_char {'on' if user.use_dice_char else 'off'}",
         f"\u200b- //nobot {'on' if user.use_nobot else 'off'}",
         f"\u200b- //ooctrick {'on' if user.use_ooctrick else 'off'}",
@@ -171,7 +172,7 @@ def preset(args, user, jai_req, response):
         raise CommandError(
             f'"`{args}`" is not a valid preset.'
             + " Available presets: "
-            + ", ".join(f"`{key}`" for key in PRESETS.keys())
+            + ", ".join(f"`{key}`" for key in PRESETS)
         )
 
     jai_req.use_preset = PRESETS[args]
@@ -185,7 +186,19 @@ def preset(args, user, jai_req, response):
 # - Copy-paste any of the commands in here and write your command text
 # - Add a "use_xyz" field to models.JaiRequest
 # - Add a "use_xyz" getter/setter to xuiduser.UserSettings
+# - Include your command's setting to //aboutme output
+# - Include your command's documentation to appropiate //help topics
 # - Implement your commands' additional logic inside handlers.handle_chat_message
+
+
+@command(argspec=r"off|on|this", setting="fixturns")
+def fixturns(args, user, jai_req, response):
+    if jai_req.quiet_commands:
+        return response
+    return response.add_proxy_message(
+        f"Fix requests turns {'enabled' if jai_req.use_fixturns else 'disabled'}"
+        + (" (for this message only)." if args == "this" else ".")
+    )
 
 
 @command(argspec=r"off|on|this", setting="btrick")
@@ -194,6 +207,16 @@ def btrick(args, user, jai_req, response):
         return response
     return response.add_proxy_message(
         f"Braille Trick {'enabled' if jai_req.use_btrick else 'disabled'}"
+        + (" (for this message only)." if args == "this" else ".")
+    )
+
+
+@command(argspec=r"off|on|this", setting="noass")
+def noass(args, user, jai_req, response):
+    if jai_req.quiet_commands:
+        return response
+    return response.add_proxy_message(
+        f"NoAss {'enabled' if jai_req.use_noass else 'disabled'}"
         + (" (for this message only)." if args == "this" else ".")
     )
 
@@ -300,7 +323,9 @@ def dice_char(args, user, jai_req, response):
 def dice_roll(args, user, jai_req, response):
     dice = args.replace("p", "+").replace("m", "-")
 
-    match = re.fullmatch(r"(\d+)?d(\d+)([+-]\d+)?([a-z])?", dice, re.A | re.I)
+    match = re.fullmatch(
+        r"(\d+)?d(\d+)([+-]\d+)?([a-z])?", dice, re.ASCII | re.IGNORECASE
+    )
     if not match:
         return response.add_proxy_message(
             f"Invalid dice syntax `{args}`\nUse the `//dice_help` command for more info."
@@ -410,6 +435,12 @@ Preset commands need to be called every time you want to use them.
 
 - `//help advsettings|commands|dice|multikey|providers`
   Shows you info about specific topics or proxy features.
+
+- `//fixturns on|off|this`
+  Adds an empty user message to the end of the conversation, fixing the issues with models that can't take prefills right away.
+
+- `//noass on|off|this`
+  Coalesces the entire chat history into a single message, hopefully bypassing content filters. May break some models.
 
 - `//btrick on|off|this`
   Uses U+2800 Braille Pattern Blank when talking to the AI to help bypass content filters.
@@ -592,25 +623,48 @@ For example: `google/AQ.Ab8RN...` (Vertex AI API key), `openrouter/z-ai/glm-4.5-
 
 ## **Google AI Studio and Vertex AI** (`google`)
 
-All models that start with `gemini-` will be routed to Google. \
-To use Gemma models, you must add `google/` at the start.
+`https://aistudio.google.com/`
+
+All models that start with `gemini-` or `gemma-` will be routed to Google.
 
 All API keys that start with `AIza` will be used with Google models. \
 Vertex AI API keys have a different format and you must add `google/` at the start.
 
 ## **Cerebras Cloud Inference** (`cerebras`)
 
+`https://cloud.cerebras.ai/`
+
 To use any Cerebras model, you must add `cerebras/` at the start.
 
 All API keys that start with `csk-` will be used with Cerebras models.
 
+## **DeepSeek** (`deepseek`)
+
+`https://platform.deepseek.com/`
+
+To use any DeepSeek model, you must add `deepseek/` at the start.
+
+You must add `deepseek/` at the start of any DeepSeek API key.
+
+## **Nvidia NIM** (`nvidia`)
+
+`https://build.nvidia.com/`
+
+To use any model through Nvidia NIM, you must add `nvidia/` first and then the full model name.
+
+All API keys that start with `nvapi-` will be used with Nvidia NIM.
+
 ## **OpenRouter** (`openrouter`)
+
+`https://openrouter.ai/`
 
 To use any model through OpenRouter, you must add `openrouter/` first and then the full model name.
 
-All API keys that start with `sk-or-v1-` will be used with OpenRouter models.
+All API keys that start with `sk-or-v1-` will be used with OpenRouter.
 
 ## **Z.AI** (`z_ai`)
+
+`https://chat.z.ai/`
 
 To use any Z.AI model, you must add `z_ai/` at the start.
 

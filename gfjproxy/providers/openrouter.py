@@ -1,6 +1,6 @@
 from typing import Any
 
-import httpx
+import httpx2
 
 from .._globals import PROCESS_TIMEOUT, PROXY_NAME, PROXY_URL
 from ..http_client import http_client
@@ -15,7 +15,7 @@ def openrouter_generate_content(
     api_key: str,
     model: str,
     messages: list[JaiMessage],
-    settings: dict[str, Any] = {},
+    settings: dict[str, Any] | None = None,
 ) -> JaiResult:
     """Wrapper around OpenRouter's Chat Completions API.
 
@@ -33,7 +33,7 @@ def openrouter_generate_content(
         ],
     }
 
-    for key, value in settings.items():
+    for key, value in (settings or {}).items():
         if key == "temperature":
             openrouter_request["temperature"] = value
         elif key == "max_tokens":
@@ -62,10 +62,10 @@ def openrouter_generate_content(
         )
         openrouter_response.raise_for_status()
         openrouter_result = openrouter_response.json()
-    except httpx.TimeoutException:
+    except httpx2.TimeoutException:
         track_stats("openrouter.time_out")
         return JaiResult(504, "Gateway Timeout")
-    except httpx.HTTPStatusError as e:
+    except httpx2.HTTPStatusError as e:
         message = "Error from OpenRouter"
         extras = ""
 
@@ -76,7 +76,7 @@ def openrouter_generate_content(
                 message += f": {error_message}"
             if error_metadata := error.get("metadata"):
                 if isinstance(error_metadata, dict):
-                    extras = error_metadata.get("raw")
+                    extras = str(error_metadata.get("raw", ""))
                 else:
                     extras = str(error_metadata)
         else:
@@ -90,7 +90,7 @@ def openrouter_generate_content(
             track_stats("openrouter.failed.unknown")
 
         return JaiResult(e.response.status_code, message, extras=extras)
-    except Exception as e:
+    except Exception as e:  # ruff: ignore[BLE001]
         xlog(user, repr(e))
         track_stats("openrouter.failed.exception")
         return JaiResult(502, "Unhanded exception from OpenRouter.")
@@ -105,13 +105,12 @@ def openrouter_generate_content(
         track_stats("openrouter.failed.anomalous")
         return JaiResult(502, message)
 
-    text = ""
+    try:
+        text = str(openrouter_result["choices"][0]["message"]["content"] or "")
+    except (KeyError, IndexError, TypeError):
+        text = ""
+
     metadata = JaiResultMetadata()
-
-    if choices := openrouter_result.get("choices"):
-        if isinstance(choices[0], dict) and (message := choices[0].get("message")):
-            text = message.get("content")
-
     if usage := openrouter_result.get("usage"):
         metadata.token_usage = JaiResultTokenUsage(
             prompt_tokens=usage.get("prompt_tokens"),
